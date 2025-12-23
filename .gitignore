@@ -1,5 +1,7 @@
-my_env
+my_env/
 plant_disease1
 plant_disease1.zip
 *.zip
-models
+*.keras
+models/
+__pycache__/
