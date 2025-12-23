@@ -1,20 +1,13 @@
-# Virtual environment
-my_env/
+# Ignore old project folder & zip
+plant_disease1/
+*.zip
 
-# ML models
+# Ignore ML models
 models/
 *.keras
 *.h5
 
-# Uploaded images
+# Uploads & env
 uploadimages/
-
-# Zip files
-*.zip
-
-# Cache
+my_env/
 __pycache__/
-*.pyc
-
-# OS files
-.DS_Store
