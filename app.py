@@ -9,37 +9,37 @@ from download_model import download_model
 
 app = Flask(__name__)
 
-# 🔥 Ensure upload folder exists
+# =========================
+# FOLDERS
+# =========================
 UPLOAD_FOLDER = "uploadimages"
+MODEL_PATH = "plant_disease.tflite"
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 🔥 Download model if not present
+# =========================
+# DOWNLOAD MODEL IF NEEDED
+# =========================
 download_model()
 
-# 🔥 Load model ONCE
-model = tf.keras.models.load_model("models/plant_disease_recog_model_pwp.keras")
+# =========================
+# LOAD TFLITE MODEL
+# =========================
+interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+interpreter.allocate_tensors()
 
-label = [
- 'Apple___Apple_scab','Apple___Black_rot','Apple___Cedar_apple_rust','Apple___healthy',
- 'Background_without_leaves','Blueberry___healthy','Cherry___Powdery_mildew','Cherry___healthy',
- 'Corn___Cercospora_leaf_spot Gray_leaf_spot','Corn___Common_rust','Corn___Northern_Leaf_Blight',
- 'Corn___healthy','Grape___Black_rot','Grape___Esca_(Black_Measles)',
- 'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)','Grape___healthy',
- 'Orange___Haunglongbing_(Citrus_greening)','Peach___Bacterial_spot','Peach___healthy',
- 'Pepper,_bell___Bacterial_spot','Pepper,_bell___healthy',
- 'Potato___Early_blight','Potato___Late_blight','Potato___healthy',
- 'Raspberry___healthy','Soybean___healthy','Squash___Powdery_mildew',
- 'Strawberry___Leaf_scorch','Strawberry___healthy',
- 'Tomato___Bacterial_spot','Tomato___Early_blight','Tomato___Late_blight',
- 'Tomato___Leaf_Mold','Tomato___Septoria_leaf_spot',
- 'Tomato___Spider_mites Two-spotted_spider_mite',
- 'Tomato___Target_Spot','Tomato___Tomato_Yellow_Leaf_Curl_Virus',
- 'Tomato___Tomato_mosaic_virus','Tomato___healthy'
-]
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
+# =========================
+# LOAD LABELS
+# =========================
 with open("plant_disease.json", "r") as file:
     plant_disease = json.load(file)
 
+# =========================
+# ROUTES
+# =========================
 @app.route('/uploadimages/<path:filename>')
 def uploaded_images(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
@@ -48,38 +48,53 @@ def uploaded_images(filename):
 def home():
     return render_template('home.html')
 
-def extract_features(image):
+# =========================
+# IMAGE PREPROCESSING
+# =========================
+def extract_features(image_path):
     image = tf.keras.utils.load_img(
-        image,
+        image_path,
         target_size=(160, 160),
-        color_mode='rgb'
+        color_mode="rgb"
     )
-    feature = tf.keras.utils.img_to_array(image)
-    feature = np.array([feature])
-    return feature
+    image = tf.keras.utils.img_to_array(image)
+    image = image / 255.0
+    image = np.expand_dims(image, axis=0).astype("float32")
+    return image
 
-def model_predict(image):
-    img = extract_features(image)
-    prediction = model.predict(img)
-    prediction_label = plant_disease[prediction.argmax()]
-    return prediction_label
+# =========================
+# PREDICTION
+# =========================
+def model_predict(image_path):
+    img = extract_features(image_path)
 
+    interpreter.set_tensor(input_details[0]['index'], img)
+    interpreter.invoke()
+
+    output = interpreter.get_tensor(output_details[0]['index'])
+    predicted_index = int(np.argmax(output))
+
+    return plant_disease[predicted_index]
+
+# =========================
+# UPLOAD & PREDICT
+# =========================
 @app.route('/upload/', methods=['POST', 'GET'])
 def uploadimage():
     if request.method == "POST":
         image = request.files['img']
-        temp_name = f"{UPLOAD_FOLDER}/temp_{uuid.uuid4().hex}_{image.filename}"
-        image.save(temp_name)
 
-        prediction = model_predict(temp_name)
+        temp_filename = f"temp_{uuid.uuid4().hex}_{image.filename}"
+        temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
+        image.save(temp_path)
+
+        prediction = model_predict(temp_path)
 
         return render_template(
             'home.html',
             result=True,
-            imagepath=f'/{temp_name}',
+            imagepath=f'/{temp_path}',
             prediction=prediction
         )
     else:
         return redirect('/')
-
-# ❌ DO NOT use debug=True on Render
